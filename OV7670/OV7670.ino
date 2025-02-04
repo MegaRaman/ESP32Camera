@@ -55,10 +55,18 @@ const int BYTES_PER_PIXEL = 2;
 const int frameSize = XRES * YRES * BYTES_PER_PIXEL;
 unsigned char frame[frameSize];
 
-const char* ssid = "yourssid";
-const char* password = "yourpass";
-/* const char* server_url = "http://192.168.183.53:5000/recognize"; */
-const char* server_url = "yoururl:5000/recognize";
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
+const char* server_url = "http://192.168.116.53:5000/recognize";
+
+TaskHandle_t TaskGetFrame;
+TaskHandle_t TaskSendFrame;
+TaskHandle_t TaskDisplayLCD;
+SemaphoreHandle_t mutex;
+
+bool frame_sent = true;
+bool frame_shown = true;
+
 
 void init_wifi() {
   WiFi.mode(WIFI_STA);
@@ -71,24 +79,58 @@ void init_wifi() {
   Serial.println(WiFi.localIP());
 }
 
-void send_frame() {
-  HTTPClient http;
-  http.begin(server_url);
-  http.addHeader("Content-Type", "application/octet-stream");
+/* Core 0 task */
+void send_frame(void *param) {
+  while (1) {
+    if (frame_sent) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+    HTTPClient http;
+    http.begin(server_url);
+    http.addHeader("Content-Type", "application/octet-stream");
 
-  int httpResponseCode = http.POST(frame, frameSize);
+    int httpResponseCode = -1;
+    httpResponseCode = http.POST(frame, frameSize);
+    frame_sent = true;
+    
+    if (httpResponseCode > 0) {
+      Serial.println("Frame sent successfully!");
+    } else {
+      Serial.println("Error sending frame.");
+    }
 
-  if (httpResponseCode > 0) {
-    Serial.println("Frame sent successfully!");
-  } else {
-    Serial.println("Error sending frame.");
+    http.end();
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
-
-  http.end();
 }
 
-void setup() 
-{
+/* Core 1 task */
+/*
+If you take semaphore only on .readFrame() you get image split in 4
+Reason is unknown to me
+*/
+void get_frame(void *param) {
+  while (1) {
+    if (xSemaphoreTake(mutex, portMAX_DELAY)) {  // Take the mutex
+      while(!digitalRead(VSYNC));
+      while(digitalRead(VSYNC));
+      camera.prepareCapture();
+      camera.startCapture();
+      while(!digitalRead(VSYNC));
+      camera.stopCapture();
+
+      camera.readFrame(frame, XRES, YRES, BYTES_PER_PIXEL);
+      frame_sent = false;
+      frame_shown = false;
+      
+      xSemaphoreGive(mutex);  // Release the mutex
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
+void setup() {
   Serial.begin(115200);
   Serial.println("Initialization...");
   i2c.init();
@@ -101,9 +143,6 @@ void setup()
     camera.QQQVGARGB565();
   #endif
   
-  //camera.QQVGAYUV();
-  //camera.RGBRaw();
-  //camera.testImage();
   
   pinMode(VSYNC, INPUT);
 
@@ -118,43 +157,73 @@ void setup()
   /* WiFi setup start */
   init_wifi();
   /* WiFi setup end */
-  Serial.println("start");
+
+  /* RTOS setup start */
+  mutex = xSemaphoreCreateMutex();
+  if (mutex == NULL) {
+    Serial.println("Mutex wasn't created");
+    ESP.restart();
+  }
+
+  xTaskCreatePinnedToCore(
+      get_frame, /* Function to implement the task */
+      "GetCamFrame", /* Name of the task */
+      10000,  /* Stack size in words */
+      NULL,  /* Task input parameter */
+      1,  /* Priority of the task */
+      &TaskGetFrame,  /* Task handle. */
+      0); /* Core where the task should run */
+
+  xTaskCreatePinnedToCore(
+      send_frame, /* Function to implement the task */
+      "WiFi_transmit", /* Name of the task */
+      10000,  /* Stack size in words */
+      NULL,  /* Task input parameter */
+      1,  /* Priority of the task */
+      &TaskSendFrame,  /* Task handle. */
+      0); /* Core where the task should run */
+
+  xTaskCreatePinnedToCore(
+      displayRGB565, /* Function to implement the task */
+      "DisplayLCD", /* Name of the task */
+      10000,  /* Stack size in words */
+      NULL,  /* Task input parameter */
+      1,  /* Priority of the task */
+      &TaskDisplayLCD,  /* Task handle. */
+      1); /* Core where the task should run */
+  /* RTOS setup end */
 }
 
-void displayRGB565()
+void displayRGB565(void *param)
 {
-  int i = 0;
-  for(int x = 0; x < XRES; x++)
-    for(int y = 0; y < YRES; y++)
-    {
-      i = (y * XRES + x) << 1;
-      Paint_SetPixel(x, y, frame[i] | (frame[i + 1] << 8));
-    }  
+  while (1) {
+    if (frame_shown) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+    if (xSemaphoreTake(mutex, portMAX_DELAY)) {  // Take the mutex
+      int i = 0;
+      for(int x = 0; x < XRES; x++) {
+        for(int y = 0; y < YRES; y++) {
+          i = (y * XRES + x) << 1;
+          Paint_SetPixel(x, y, frame[i] | (frame[i + 1] << 8));
+        }
+      }
+      frame_shown = true;
+      xSemaphoreGive(mutex);  // Release the mutex
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
 }
 
-void testTFT() //a small tft test output showing errors on my tft with bright colors
+void testTFT() // green color test
 {
   int i = 0;
-  for(int y = 0; y < 64; y++)
-    for(int x = 0; x < 32; x++)
+  for(int y = 0; y < XRES; y++)
+    for(int x = 0; x < YRES; x++)
       Paint_SetPixel(x, y, 0x7E0);
 }
-
-// void displayY8()
-// {
-//   tft.setAddrWindow(0, 0, YRES - 1, XRES - 1);
-//   int i = 0;
-//   for(int x = 0; x < XRES; x++)
-//     for(int y = 0; y < YRES; y++)
-//     {
-//       i = y * XRES + x;
-//       unsigned char c = frame[i];
-//       unsigned short r = c >> 3;
-//       unsigned short g = c >> 2;
-//       unsigned short b = c >> 3;
-//       tft.pushColor(r << 11 | g << 5 | b);
-//     }  
-// }
 
 void frameToSerial()
 {
@@ -176,14 +245,6 @@ void frameToSerial()
 
 void loop() 
 {
-  while(!digitalRead(VSYNC));
-  while(digitalRead(VSYNC));
-  camera.prepareCapture();
-  camera.startCapture();
-  while(!digitalRead(VSYNC));
-  camera.stopCapture();
-
-  camera.readFrame(frame, XRES, YRES, BYTES_PER_PIXEL);
-  displayRGB565();
-  send_frame();
+  vTaskDelay(pdMS_TO_TICKS(1));
 }
+

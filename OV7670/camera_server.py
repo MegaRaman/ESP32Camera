@@ -5,11 +5,12 @@ import threading
 import numpy as np
 import face_recognition
 import os
+from PIL import Image
 
 
 xres = 160
 yres = 120
-allowed_people_dir = "your_dir_with_faces"
+allowed_people_dir = "allowed_people/"
 allowed_people = []
 allowed_people_names = []
 

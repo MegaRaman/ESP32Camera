@@ -49,7 +49,6 @@
 **/
 #define DEV_CS_PIN  16
 #define DEV_DC_PIN  15
-#define DEV_RST_PIN 40
 #define DEV_BL_PIN  19
 
 

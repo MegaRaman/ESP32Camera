@@ -6,7 +6,7 @@
 *----------------
 * |	This version:   V1.0
 * | Date        :   2018-12-18
-* | Info        :   
+* | Info        :
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documnetation files (the "Software"), to deal
@@ -34,31 +34,31 @@ function:
 *******************************************************************************/
 static void LCD_Reset(void)
 {
-	DEV_Delay_ms(200);
-	DEV_Digital_Write(DEV_RST_PIN, 0);
-	DEV_Delay_ms(200);
-	DEV_Digital_Write(DEV_RST_PIN, 1);
-	DEV_Delay_ms(200);
+	/* DEV_Delay_ms(200); */
+	/* DEV_Digital_Write(DEV_RST_PIN, 0); */
+	/* DEV_Delay_ms(200); */
+	/* DEV_Digital_Write(DEV_RST_PIN, 1); */
+	/* DEV_Delay_ms(200); */
 }
 
 /*******************************************************************************
 function:
 		Write data and commands
 *******************************************************************************/
-static void LCD_Write_Command(UBYTE data)	 
-{	
+static void LCD_Write_Command(UBYTE data)
+{
 	DEV_Digital_Write(DEV_CS_PIN, 0);
 	DEV_Digital_Write(DEV_DC_PIN, 0);
 	DEV_SPI_WRITE(data);
 }
 
-static void LCD_WriteData_Byte(UBYTE data) 
-{	
+static void LCD_WriteData_Byte(UBYTE data)
+{
 	DEV_Digital_Write(DEV_CS_PIN, 0);
 	DEV_Digital_Write(DEV_DC_PIN, 1);
-	DEV_SPI_WRITE(data);  
+	DEV_SPI_WRITE(data);
 	DEV_Digital_Write(DEV_CS_PIN,1);
-}  
+}
 
 void LCD_WriteData_Word(UWORD data)
 {
@@ -67,19 +67,17 @@ void LCD_WriteData_Word(UWORD data)
 	DEV_SPI_WRITE((data>>8) & 0xff);
 	DEV_SPI_WRITE(data);
 	DEV_Digital_Write(DEV_CS_PIN, 1);
-}	  
+}
 
 
 /******************************************************************************
-function:	
+function:
 		Common register initialization
 ******************************************************************************/
 void LCD_Init(void)
 {
-	LCD_Reset();
-
 	LCD_Write_Command(0x11); //Sleep out
-	
+
 	LCD_Write_Command(0xCF);
 	LCD_WriteData_Byte(0x00);
 	LCD_WriteData_Byte(0xC1);
@@ -175,7 +173,7 @@ parameter	:
 	  Yend  :	End UWORD coordinatesen
 ******************************************************************************/
 void LCD_SetWindow(UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD  Yend)
-{ 
+{
 	LCD_Write_Command(0x2a);
 	LCD_WriteData_Byte(0x00);
 	LCD_WriteData_Byte(Xstart & 0xff);
@@ -199,7 +197,7 @@ parameter	:
 
 ******************************************************************************/
 void LCD_SetCursor(UWORD X, UWORD Y)
-{ 
+{
 	LCD_Write_Command(0x2a);
 	LCD_WriteData_Byte(X >> 8);
 	LCD_WriteData_Byte(X);
@@ -222,7 +220,7 @@ parameter	:
 ******************************************************************************/
 void LCD_Clear(UWORD Color)
 {
-	unsigned int i,j;  	
+	unsigned int i,j;
 	LCD_SetWindow(0, 0, LCD_WIDTH, LCD_HEIGHT);
 	DEV_Digital_Write(DEV_DC_PIN, 1);
 	for(i = 0; i < LCD_WIDTH; i++){
@@ -243,14 +241,14 @@ parameter	:
 	  color :	Set the color
 ******************************************************************************/
 void LCD_ClearWindow(UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD Yend,UWORD color)
-{          
-	UWORD i,j; 
+{
+	UWORD i,j;
 	LCD_SetWindow(Xstart, Ystart, Xend-1,Yend-1);
-	for(i = Ystart; i <= Yend-1; i++){													   	 	
+	for(i = Ystart; i <= Yend-1; i++){
 		for(j = Xstart; j <= Xend-1; j++){
 			LCD_WriteData_Word(color);
 		}
-	} 					  	    
+	}
 }
 
 /******************************************************************************
@@ -263,5 +261,5 @@ parameter	:
 void LCD_DrawPaint(UWORD x, UWORD y, UWORD Color)
 {
 	LCD_SetCursor(x, y);
-	LCD_WriteData_Word(Color); 	    
+	LCD_WriteData_Word(Color);
 }
